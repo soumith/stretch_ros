@@ -18,6 +18,7 @@ class JointTrajectoryAction:
 
     def __init__(self, node):
         self.node = node
+        self.use_robotis_gripper=False
         self.server = actionlib.SimpleActionServer('/stretch_controller/follow_joint_trajectory',
                                                    FollowJointTrajectoryAction,
                                                    execute_cb=self.execute_cb,
@@ -35,11 +36,12 @@ class JointTrajectoryAction:
         wrist_yaw_range_ticks = r.end_of_arm.motors['wrist_yaw'].params['range_t']
         wrist_yaw_range_rad = (r.end_of_arm.motors['wrist_yaw'].ticks_to_world_rad(wrist_yaw_range_ticks[1]),
                                r.end_of_arm.motors['wrist_yaw'].ticks_to_world_rad(wrist_yaw_range_ticks[0]))
-        gripper_range_ticks = r.end_of_arm.motors['stretch_gripper'].params['range_t']
-        gripper_range_rad = (r.end_of_arm.motors['stretch_gripper'].ticks_to_world_rad(gripper_range_ticks[0]),
-                             r.end_of_arm.motors['stretch_gripper'].ticks_to_world_rad(gripper_range_ticks[1]))
-        gripper_range_robotis = (r.end_of_arm.motors['stretch_gripper'].world_rad_to_pct(gripper_range_rad[0]),
-                                 r.end_of_arm.motors['stretch_gripper'].world_rad_to_pct(gripper_range_rad[1]))
+        if self.use_robotis_gripper:
+            gripper_range_ticks = r.end_of_arm.motors['stretch_gripper'].params['range_t']
+            gripper_range_rad = (r.end_of_arm.motors['stretch_gripper'].ticks_to_world_rad(gripper_range_ticks[0]),
+                                 r.end_of_arm.motors['stretch_gripper'].ticks_to_world_rad(gripper_range_ticks[1]))
+            gripper_range_robotis = (r.end_of_arm.motors['stretch_gripper'].world_rad_to_pct(gripper_range_rad[0]),
+                                     r.end_of_arm.motors['stretch_gripper'].world_rad_to_pct(gripper_range_rad[1]))
 
         self.head_pan_cg = HeadPanCommandGroup(head_pan_range_rad,
                                                self.node.head_pan_calibrated_offset_rad,
@@ -49,7 +51,8 @@ class JointTrajectoryAction:
                                                  self.node.head_tilt_calibrated_looking_up_offset_rad,
                                                  self.node.head_tilt_backlash_transition_angle_rad)
         self.wrist_yaw_cg = WristYawCommandGroup(wrist_yaw_range_rad)
-        self.gripper_cg = GripperCommandGroup(gripper_range_robotis)
+        if self.use_robotis_gripper:
+            self.gripper_cg = GripperCommandGroup(gripper_range_robotis)
         self.telescoping_cg = TelescopingCommandGroup(tuple(r.arm.params['range_m']),
                                                       self.node.wrist_extension_calibrated_retracted_offset_m)
         self.lift_cg = LiftCommandGroup(tuple(r.lift.params['range_m']))
@@ -68,8 +71,12 @@ class JointTrajectoryAction:
 
         ###################################################
         # Decide what to do based on the commanded joints.
-        command_groups = [self.telescoping_cg, self.lift_cg, self.mobile_base_cg, self.head_pan_cg,
+        if self.use_robotis_gripper:
+            command_groups = [self.telescoping_cg, self.lift_cg, self.mobile_base_cg, self.head_pan_cg,
                           self.head_tilt_cg, self.wrist_yaw_cg, self.gripper_cg]
+        else:
+            command_groups = [self.telescoping_cg, self.lift_cg, self.mobile_base_cg, self.head_pan_cg,
+                              self.head_tilt_cg, self.wrist_yaw_cg]
         updates = [c.update(commanded_joint_names, self.invalid_joints_callback,
                    robot_mode=self.node.robot_mode)
                    for c in command_groups]
